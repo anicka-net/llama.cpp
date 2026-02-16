@@ -6,6 +6,7 @@
 
 #include <map>
 #include <cassert>
+#include <cfloat>
 #include <sstream>
 #include <stdexcept>
 
@@ -155,8 +156,10 @@ ggml_tensor * llama_adapter_acap::apply_to(ggml_context * ctx, ggml_tensor * cur
     ggml_tensor * a_col = ggml_reshape_2d(ctx, axis, n_embd, 1);   // [n_embd, 1]
     ggml_tensor * proj  = ggml_mul_mat(ctx, a_col, cur);            // [1, n_tokens]
 
-    // clamp projection to [-threshold, threshold]
-    ggml_tensor * clamped = ggml_clamp(ctx, proj, -threshold, threshold);
+    // one-sided clamp: only cap when projection > -threshold
+    // (more positive = drifting away from aligned persona)
+    // matches PyTorch: excess = (proj - tau).clamp(min=0) where tau = -threshold
+    ggml_tensor * clamped = ggml_clamp(ctx, proj, -FLT_MAX, -threshold);
     ggml_tensor * excess  = ggml_sub(ctx, proj, clamped);           // [1, n_tokens]
 
     // outer product: correction = axis * excess^T
