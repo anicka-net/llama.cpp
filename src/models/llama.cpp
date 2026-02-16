@@ -148,6 +148,9 @@ llm_build_llama<embed>::llm_build_llama(const llama_model & model, const llm_gra
         cur = build_cvec(cur, il);
         cb(cur, "l_out", il);
 
+        cur = build_acap(cur, il);
+        cb(cur, "l_out_acap", il);
+
         // input for next layer
         inpL = cur;
     }

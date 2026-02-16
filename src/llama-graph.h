@@ -530,6 +530,7 @@ struct llm_graph_params {
     ggml_backend_t backend_cpu;
 
     const llama_adapter_cvec     * cvec;
+    const llama_adapter_acap     * acap;
     const llama_adapter_loras    * loras;
     const llama_memory_context_i * mctx;
     const llama_cross            * cross;
@@ -618,6 +619,7 @@ struct llm_graph_params {
             arch  == other.arch  &&
             gtype == other.gtype &&
             cvec  == other.cvec  &&
+            acap  == other.acap  &&
             loras == other.loras &&
             cross == other.cross;
     }
@@ -738,6 +740,7 @@ struct llm_graph_context {
     ggml_backend_t backend_cpu; // TODO: needed by build_attn_mha, figure out a way to remove?
 
     const llama_adapter_cvec     * cvec;
+    const llama_adapter_acap     * acap;
     const llama_adapter_loras    * loras;
     const llama_memory_context_i * mctx;
     const llama_cross            * cross;
@@ -761,6 +764,10 @@ struct llm_graph_context {
     //
 
     ggml_tensor * build_cvec(
+             ggml_tensor * cur,
+                     int   il) const;
+
+    ggml_tensor * build_acap(
              ggml_tensor * cur,
                      int   il) const;
 

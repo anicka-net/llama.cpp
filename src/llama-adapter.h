@@ -42,6 +42,38 @@ private:
 using llama_adapter_cvec_ptr = std::shared_ptr<llama_adapter_cvec>;
 
 //
+// llama_adapter_acap (activation capping)
+//
+
+struct llama_adapter_acap {
+    ggml_tensor * tensor_for(int il) const;
+
+    // builds project-clamp-subtract subgraph
+    ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const;
+
+    bool apply(
+            const llama_model & model,
+            const float * data,
+            size_t len,
+            int32_t n_embd,
+            int32_t il_start,
+            int32_t il_end,
+            float threshold);
+
+private:
+    bool init(const llama_model & model);
+
+    int32_t layer_start = -1;
+    int32_t layer_end   = -1;
+    float   threshold   = 0.0f;
+
+    std::vector<ggml_context_ptr> ctxs;
+    std::vector<ggml_backend_buffer_ptr> bufs;
+
+    std::vector<ggml_tensor *> tensors; // per layer
+};
+
+//
 // llama_adapter_lora
 //
 

@@ -691,6 +691,19 @@ extern "C" {
                          int32_t   il_start,
                          int32_t   il_end);
 
+    // Apply activation capping (project-clamp-subtract) along a direction axis.
+    // Uses the same data format as control vectors (n_embd x n_layers from layer 1).
+    // The axis should be a unit vector. Projections beyond threshold are clamped.
+    // Pass data = NULL to disable.
+    LLAMA_API int32_t llama_set_adapter_acap(
+            struct llama_context * ctx,
+                     const float * data,
+                          size_t   len,
+                         int32_t   n_embd,
+                         int32_t   il_start,
+                         int32_t   il_end,
+                           float   threshold);
+
     //
     // Memory
     //

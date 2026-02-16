@@ -1170,6 +1170,18 @@ bool llama_context::set_adapter_cvec(
     return cvec->apply(model, data, len, n_embd, il_start, il_end);
 }
 
+bool llama_context::set_adapter_acap(
+            const float * data,
+                 size_t   len,
+                int32_t   n_embd,
+                int32_t   il_start,
+                int32_t   il_end,
+                  float   threshold) {
+    LLAMA_LOG_DEBUG("%s: il_start = %d, il_end = %d, threshold = %.2f\n", __func__, il_start, il_end, threshold);
+
+    return acap.apply(model, data, len, n_embd, il_start, il_end, threshold);
+}
+
 llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
     if (mctx && !mctx->apply()) {
         LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
@@ -2146,6 +2158,7 @@ llm_graph_params llama_context::graph_params(
         /*.sched       =*/ sched.get(),
         /*.backend_cpu =*/ backend_cpu,
         /*.cvec        =*/ cvec.get(),
+        /*.acap        =*/ &acap,
         /*.loras       =*/ loras.get(),
         /*.mctx        =*/ mctx,
         /*.cross       =*/ &cross,
@@ -3180,6 +3193,19 @@ int32_t llama_set_adapter_cvec(
               int32_t   il_start,
               int32_t   il_end) {
     bool res = ctx->set_adapter_cvec(data, len, n_embd, il_start, il_end);
+
+    return res ? 0 : -1;
+}
+
+int32_t llama_set_adapter_acap(
+        llama_context * ctx,
+          const float * data,
+               size_t   len,
+              int32_t   n_embd,
+              int32_t   il_start,
+              int32_t   il_end,
+                float   threshold) {
+    bool res = ctx->set_adapter_acap(data, len, n_embd, il_start, il_end, threshold);
 
     return res ? 0 : -1;
 }

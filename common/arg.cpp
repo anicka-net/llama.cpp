@@ -2531,6 +2531,28 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ));
     add_opt(common_arg(
+        {"--acap"}, "FNAME",
+        "add an activation capping axis from GGUF file (same format as control vectors)",
+        [](common_params & params, const std::string & value) {
+            params.acap_vectors.push_back({ 1.0f, value, });
+        }
+    ));
+    add_opt(common_arg(
+        {"--acap-threshold"}, "FLOAT",
+        "activation capping threshold (required with --acap)",
+        [](common_params & params, const std::string & value) {
+            params.acap_threshold = std::stof(value);
+        }
+    ));
+    add_opt(common_arg(
+        {"--acap-layer-range"}, "START", "END",
+        "layer range to apply activation capping to, start and end inclusive",
+        [](common_params & params, const std::string & start, const std::string & end) {
+            params.acap_layer_start = std::stoi(start);
+            params.acap_layer_end = std::stoi(end);
+        }
+    ));
+    add_opt(common_arg(
         {"-a", "--alias"}, "STRING",
         "set model name aliases, comma-separated (to be used by API)",
         [](common_params & params, const std::string & value) {

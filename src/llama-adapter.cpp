@@ -133,6 +133,149 @@ bool llama_adapter_cvec::apply(
     return true;
 }
 
+// acap (activation capping)
+
+ggml_tensor * llama_adapter_acap::tensor_for(int il) const {
+    if (il < 0 || il < layer_start || il > layer_end || (size_t) il >= tensors.size()) {
+        return nullptr;
+    }
+
+    return tensors[il];
+}
+
+ggml_tensor * llama_adapter_acap::apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const {
+    ggml_tensor * axis = tensor_for(il);
+    if (axis == nullptr || threshold <= 0.0f) {
+        return cur;
+    }
+
+    const int64_t n_embd = axis->ne[0];
+
+    // project cur onto axis: dot product per token
+    ggml_tensor * a_col = ggml_reshape_2d(ctx, axis, n_embd, 1);   // [n_embd, 1]
+    ggml_tensor * proj  = ggml_mul_mat(ctx, a_col, cur);            // [1, n_tokens]
+
+    // clamp projection to [-threshold, threshold]
+    ggml_tensor * clamped = ggml_clamp(ctx, proj, -threshold, threshold);
+    ggml_tensor * excess  = ggml_sub(ctx, proj, clamped);           // [1, n_tokens]
+
+    // outer product: correction = axis * excess^T
+    ggml_tensor * a_row = ggml_reshape_2d(ctx, axis, 1, n_embd);   // [1, n_embd]
+    ggml_tensor * correction = ggml_mul_mat(ctx, a_row, excess);    // [n_embd, n_tokens]
+
+    cur = ggml_sub(ctx, cur, correction);
+
+    return cur;
+}
+
+bool llama_adapter_acap::init(const llama_model & model) {
+    const auto & hparams = model.hparams;
+
+    GGML_ASSERT(tensors.empty());
+    GGML_ASSERT(ctxs.empty());
+    GGML_ASSERT(bufs.empty());
+
+    // create a context for each buffer type
+    std::map<ggml_backend_buffer_type_t, ggml_context *> ctx_map;
+    auto ctx_for_buft = [&](ggml_backend_buffer_type_t buft) -> ggml_context * {
+        auto it = ctx_map.find(buft);
+        if (it == ctx_map.end()) {
+            ggml_init_params params = {
+                /*.mem_size   =*/ hparams.n_layer*ggml_tensor_overhead(),
+                /*.mem_buffer =*/ NULL,
+                /*.no_alloc   =*/ true,
+            };
+
+            ggml_context * ctx = ggml_init(params);
+            if (!ctx) {
+                return nullptr;
+            }
+
+            ctx_map[buft] = ctx;
+            ctxs.emplace_back(ctx);
+
+            return ctx;
+        }
+
+        return it->second;
+    };
+
+    // make tensors
+    tensors.reserve(hparams.n_layer);
+    tensors.push_back(nullptr); // there's never a tensor for layer 0
+    for (size_t il = 1; il < hparams.n_layer; il++) {
+        ggml_backend_buffer_type_t buft = model.select_buft(il);
+        ggml_context * ctx = ctx_for_buft(buft);
+        if (!ctx) {
+            LLAMA_LOG_ERROR("%s: failed to allocate context for activation capping\n", __func__);
+            return false;
+        }
+        ggml_tensor * tensor = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, hparams.n_embd);
+        tensors.push_back(tensor);
+    }
+
+    // allocate tensors / buffers and zero
+    bufs.reserve(ctx_map.size());
+    for (auto it : ctx_map) {
+        ggml_backend_buffer_type_t buft = it.first;
+        ggml_context * ctx = it.second;
+        ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors_from_buft(ctx, buft);
+        if (!buf) {
+            LLAMA_LOG_ERROR("%s: failed to allocate buffer for activation capping\n", __func__);
+            return false;
+        }
+        ggml_backend_buffer_clear(buf, 0);
+        bufs.emplace_back(buf);
+    }
+
+    return true;
+}
+
+bool llama_adapter_acap::apply(
+        const llama_model & model,
+        const float * data,
+        size_t len,
+        int32_t n_embd,
+        int32_t il_start,
+        int32_t il_end,
+        float threshold_) {
+    const auto & hparams = model.hparams;
+
+    if (data == nullptr) {
+        // disable the current activation capping (but leave allocated for later)
+        layer_start = -1;
+        layer_end   = -1;
+        threshold   = 0.0f;
+        return true;
+    }
+
+    if (n_embd != (int) hparams.n_embd) {
+        LLAMA_LOG_ERROR("%s: activation capping n_embd does not match model\n", __func__);
+        return false;
+    }
+
+    if (tensors.empty()) {
+        if (!init(model)) {
+            return false;
+        }
+    }
+
+    layer_start = il_start;
+    layer_end   = il_end;
+    threshold   = threshold_;
+
+    for (size_t il = 1; il < hparams.n_layer; il++) {
+        assert(tensors[il] != nullptr);
+
+        const size_t off = n_embd * (il - 1); // buffer doesn't have data for layer 0, since it's never present
+        if (off + n_embd <= len) {
+            ggml_backend_tensor_set(tensors[il], data + off, 0, n_embd * ggml_element_size(tensors[il]));
+        }
+    }
+
+    return true;
+}
+
 // lora
 
 llama_adapter_lora_weight * llama_adapter_lora::get_weight(ggml_tensor * w) {

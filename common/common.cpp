@@ -1208,6 +1208,33 @@ common_init_result_ptr common_init_from_params(common_params & params) {
         }
     }
 
+    if (!params.acap_vectors.empty()) {
+        if (params.acap_threshold <= 0.0f) {
+            LOG_ERR("%s: --acap requires --acap-threshold > 0\n", __func__);
+            return res;
+        }
+        if (params.acap_layer_start <= 0) params.acap_layer_start = 1;
+        if (params.acap_layer_end   <= 0) params.acap_layer_end   = llama_model_n_layer(model);
+
+        const auto acap_data = common_control_vector_load(params.acap_vectors);
+        if (acap_data.n_embd == -1) {
+            return res;
+        }
+
+        int err = llama_set_adapter_acap(
+                lctx,
+                acap_data.data.data(),
+                acap_data.data.size(),
+                acap_data.n_embd,
+                params.acap_layer_start,
+                params.acap_layer_end,
+                params.acap_threshold);
+        if (err) {
+            LOG_ERR("%s: failed to set activation capping\n", __func__);
+            return res;
+        }
+    }
+
     if (llama_pooling_type(lctx) == LLAMA_POOLING_TYPE_RANK) {
         bool ok = true;
 

@@ -116,6 +116,14 @@ struct llama_context {
                 int32_t   il_start,
                 int32_t   il_end);
 
+    bool set_adapter_acap(
+            const float * data,
+                 size_t   len,
+                int32_t   n_embd,
+                int32_t   il_start,
+                int32_t   il_end,
+                  float   threshold);
+
     // process a single ubatch with a specific graph type
     // if memory_context is provided, it will be applied first to the context's memory
     // ret contains the status of the graph computation
@@ -259,6 +267,7 @@ private:
     llama_cparams cparams;
 
     llama_adapter_cvec_ptr  cvec;
+    llama_adapter_acap      acap;
     llama_adapter_loras_ptr loras;
 
     llama_cross cross; // TODO: tmp for handling cross-attention - need something better probably
