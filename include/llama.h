@@ -704,6 +704,13 @@ extern "C" {
                          int32_t   il_end,
                            float   threshold);
 
+    // Set per-layer activation capping threshold (overrides global threshold for this layer).
+    // tau is the raw projection threshold (negative = more aligned persona direction).
+    LLAMA_API void llama_set_adapter_acap_layer_threshold(
+            struct llama_context * ctx,
+                         int32_t   il,
+                           float   tau);
+
     //
     // Memory
     //

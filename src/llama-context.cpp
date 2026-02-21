@@ -1182,6 +1182,10 @@ bool llama_context::set_adapter_acap(
     return acap.apply(model, data, len, n_embd, il_start, il_end, threshold);
 }
 
+void llama_context::set_adapter_acap_layer_threshold(int32_t il, float tau) {
+    acap.set_per_layer_threshold(il, tau);
+}
+
 llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
     if (mctx && !mctx->apply()) {
         LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
@@ -3208,6 +3212,13 @@ int32_t llama_set_adapter_acap(
     bool res = ctx->set_adapter_acap(data, len, n_embd, il_start, il_end, threshold);
 
     return res ? 0 : -1;
+}
+
+void llama_set_adapter_acap_layer_threshold(
+        llama_context * ctx,
+              int32_t   il,
+                float   tau) {
+    ctx->set_adapter_acap_layer_threshold(il, tau);
 }
 
 //

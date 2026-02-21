@@ -124,6 +124,8 @@ struct llama_context {
                 int32_t   il_end,
                   float   threshold);
 
+    void set_adapter_acap_layer_threshold(int32_t il, float tau);
+
     // process a single ubatch with a specific graph type
     // if memory_context is provided, it will be applied first to the context's memory
     // ret contains the status of the graph computation

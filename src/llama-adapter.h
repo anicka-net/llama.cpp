@@ -51,6 +51,9 @@ struct llama_adapter_acap {
     // builds project-clamp-subtract subgraph
     ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const;
 
+    // set per-layer threshold (overrides global --acap-threshold for this layer)
+    void set_per_layer_threshold(int il, float tau);
+
     bool apply(
             const llama_model & model,
             const float * data,
@@ -66,6 +69,8 @@ private:
     int32_t layer_start = -1;
     int32_t layer_end   = -1;
     float   threshold   = 0.0f;
+
+    std::unordered_map<int, float> per_layer_thresholds; // layer_idx -> tau (overrides global)
 
     std::vector<ggml_context_ptr> ctxs;
     std::vector<ggml_backend_buffer_ptr> bufs;

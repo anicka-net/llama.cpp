@@ -11,6 +11,7 @@
 #include <string_view>
 #include <vector>
 #include <map>
+#include <unordered_map>
 
 #if defined(_WIN32) && !defined(_WIN32_WINNT)
 #define _WIN32_WINNT 0x0A00
@@ -904,6 +905,9 @@ struct common_control_vector_data {
 
     // stores data for layers [1, n_layer] where n_layer = data.size() / n_embd
     std::vector<float> data;
+
+    // per-layer thresholds from GGUF metadata (acap only): layer_idx -> tau
+    std::unordered_map<int, float> per_layer_thresholds;
 };
 
 struct common_control_vector_load_info {

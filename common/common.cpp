@@ -1209,10 +1209,6 @@ common_init_result_ptr common_init_from_params(common_params & params) {
     }
 
     if (!params.acap_vectors.empty()) {
-        if (params.acap_threshold <= 0.0f) {
-            LOG_ERR("%s: --acap requires --acap-threshold > 0\n", __func__);
-            return res;
-        }
         if (params.acap_layer_start <= 0) params.acap_layer_start = 1;
         if (params.acap_layer_end   <= 0) params.acap_layer_end   = llama_model_n_layer(model);
 
@@ -1221,6 +1217,16 @@ common_init_result_ptr common_init_from_params(common_params & params) {
             return res;
         }
 
+        // --acap-threshold is optional when per-layer thresholds are in the GGUF
+        if (params.acap_threshold <= 0.0f && acap_data.per_layer_thresholds.empty()) {
+            LOG_ERR("%s: --acap requires --acap-threshold > 0 (or per-layer thresholds in GGUF)\n", __func__);
+            return res;
+        }
+
+        // Use a dummy threshold of 1.0 if only per-layer thresholds are set
+        // (the global threshold is only used as fallback for layers without per-layer values)
+        float global_threshold = params.acap_threshold > 0.0f ? params.acap_threshold : 1.0f;
+
         int err = llama_set_adapter_acap(
                 lctx,
                 acap_data.data.data(),
@@ -1228,10 +1234,18 @@ common_init_result_ptr common_init_from_params(common_params & params) {
                 acap_data.n_embd,
                 params.acap_layer_start,
                 params.acap_layer_end,
-                params.acap_threshold);
+                global_threshold);
         if (err) {
             LOG_ERR("%s: failed to set activation capping\n", __func__);
             return res;
+        }
+
+        // apply per-layer thresholds from GGUF metadata
+        for (const auto & [layer, tau] : acap_data.per_layer_thresholds) {
+            llama_set_adapter_acap_layer_threshold(lctx, layer, tau);
+        }
+        if (!acap_data.per_layer_thresholds.empty()) {
+            LOG_INF("%s: loaded %zu per-layer acap thresholds from GGUF\n", __func__, acap_data.per_layer_thresholds.size());
         }
     }
 
@@ -1676,6 +1690,23 @@ static common_control_vector_data common_control_vector_load_one(const common_co
     if (result.n_embd == -1) {
         LOG_WRN("%s: skipping %s due to invalid direction tensors\n", __func__, load_info.fname.c_str());
         result.data.clear();
+    }
+
+    // read per-layer thresholds from GGUF metadata (keys: acap.threshold.{layer})
+    for (int i = 0; i < gguf_get_n_kv(ctx_gguf); i++) {
+        const char * key = gguf_get_key(ctx_gguf, i);
+        std::string skey(key);
+        const std::string prefix = "acap.threshold.";
+        if (skey.substr(0, prefix.size()) == prefix) {
+            try {
+                int layer_idx = std::stoi(skey.substr(prefix.size()));
+                float tau = gguf_get_val_f32(ctx_gguf, i);
+                result.per_layer_thresholds[layer_idx] = tau;
+                LOG_INF("%s: per-layer threshold: layer %d tau = %.4f\n", __func__, layer_idx, tau);
+            } catch (...) {
+                LOG_WRN("%s: failed to parse threshold key: %s\n", __func__, key);
+            }
+        }
     }
 
     gguf_free(ctx_gguf);

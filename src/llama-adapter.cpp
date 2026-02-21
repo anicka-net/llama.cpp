@@ -146,8 +146,19 @@ ggml_tensor * llama_adapter_acap::tensor_for(int il) const {
 
 ggml_tensor * llama_adapter_acap::apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const {
     ggml_tensor * axis = tensor_for(il);
-    if (axis == nullptr || threshold <= 0.0f) {
+    if (axis == nullptr) {
         return cur;
+    }
+
+    // resolve threshold: per-layer overrides global
+    float tau;
+    auto it = per_layer_thresholds.find(il);
+    if (it != per_layer_thresholds.end()) {
+        tau = it->second;  // per-layer tau (may be negative — that is the actual projection value)
+    } else if (threshold > 0.0f) {
+        tau = -threshold;  // global CLI threshold (legacy: positive value negated)
+    } else {
+        return cur;  // no threshold set
     }
 
     const int64_t n_embd = axis->ne[0];
@@ -156,10 +167,10 @@ ggml_tensor * llama_adapter_acap::apply_to(ggml_context * ctx, ggml_tensor * cur
     ggml_tensor * a_col = ggml_reshape_2d(ctx, axis, n_embd, 1);   // [n_embd, 1]
     ggml_tensor * proj  = ggml_mul_mat(ctx, a_col, cur);            // [1, n_tokens]
 
-    // one-sided clamp: only cap when projection > -threshold
+    // one-sided clamp: only cap when projection > tau
     // (more positive = drifting away from aligned persona)
-    // matches PyTorch: excess = (proj - tau).clamp(min=0) where tau = -threshold
-    ggml_tensor * clamped = ggml_clamp(ctx, proj, -FLT_MAX, -threshold);
+    // excess = (proj - tau).clamp(min=0)
+    ggml_tensor * clamped = ggml_clamp(ctx, proj, -FLT_MAX, tau);
     ggml_tensor * excess  = ggml_sub(ctx, proj, clamped);           // [1, n_tokens]
 
     // outer product: correction = axis * excess^T
@@ -277,6 +288,10 @@ bool llama_adapter_acap::apply(
     }
 
     return true;
+}
+
+void llama_adapter_acap::set_per_layer_threshold(int il, float tau) {
+    per_layer_thresholds[il] = tau;
 }
 
 // lora
