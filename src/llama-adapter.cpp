@@ -7,8 +7,10 @@
 #include <map>
 #include <cassert>
 #include <cfloat>
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 // vec
 
@@ -283,7 +285,22 @@ bool llama_adapter_acap::apply(
 
         const size_t off = n_embd * (il - 1); // buffer doesn't have data for layer 0, since it's never present
         if (off + n_embd <= len) {
-            ggml_backend_tensor_set(tensors[il], data + off, 0, n_embd * ggml_element_size(tensors[il]));
+            // normalize the direction vector to unit length so that
+            // dot(hidden, axis) gives the true scalar projection and
+            // the correction axis * excess doesn't overshoot by ||axis||^2
+            std::vector<float> normed(data + off, data + off + n_embd);
+            float norm_sq = 0.0f;
+            for (int j = 0; j < n_embd; j++) {
+                norm_sq += normed[j] * normed[j];
+            }
+            float norm = sqrtf(norm_sq);
+            if (norm > 1e-8f) {
+                float inv_norm = 1.0f / norm;
+                for (int j = 0; j < n_embd; j++) {
+                    normed[j] *= inv_norm;
+                }
+            }
+            ggml_backend_tensor_set(tensors[il], normed.data(), 0, n_embd * ggml_element_size(tensors[il]));
         }
     }
 
