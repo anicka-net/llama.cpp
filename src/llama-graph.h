@@ -529,11 +529,12 @@ struct llm_graph_params {
     ggml_backend_sched_t sched;
     ggml_backend_t backend_cpu;
 
-    const llama_adapter_cvec     * cvec;
-    const llama_adapter_acap     * acap;
-    const llama_adapter_loras    * loras;
-    const llama_memory_context_i * mctx;
-    const llama_cross            * cross;
+    const llama_adapter_cvec       * cvec;
+    const llama_adapter_acap       * acap;
+    const llama_adapter_h_suppress * h_suppress;
+    const llama_adapter_loras      * loras;
+    const llama_memory_context_i   * mctx;
+    const llama_cross              * cross;
 
     std::map<llama_seq_id, llama_sampler *> samplers;
 
@@ -739,11 +740,12 @@ struct llm_graph_context {
 
     ggml_backend_t backend_cpu; // TODO: needed by build_attn_mha, figure out a way to remove?
 
-    const llama_adapter_cvec     * cvec;
-    const llama_adapter_acap     * acap;
-    const llama_adapter_loras    * loras;
-    const llama_memory_context_i * mctx;
-    const llama_cross            * cross;
+    const llama_adapter_cvec       * cvec;
+    const llama_adapter_acap       * acap;
+    const llama_adapter_h_suppress * h_suppress;
+    const llama_adapter_loras      * loras;
+    const llama_memory_context_i   * mctx;
+    const llama_cross              * cross;
 
     std::map<llama_seq_id, llama_sampler *> samplers;
 
@@ -768,6 +770,10 @@ struct llm_graph_context {
                      int   il) const;
 
     ggml_tensor * build_acap(
+             ggml_tensor * cur,
+                     int   il) const;
+
+    ggml_tensor * build_h_suppress(
              ggml_tensor * cur,
                      int   il) const;
 

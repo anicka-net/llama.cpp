@@ -711,6 +711,16 @@ extern "C" {
                          int32_t   il,
                            float   tau);
 
+    // Apply H-Neuron suppression (per-neuron scaling in FFN intermediate activations).
+    // data is a scaling vector of size d_m (FFN intermediate dimension) for layer il.
+    // Values should be 1.0 for normal neurons and < 1.0 for suppressed H-Neurons.
+    LLAMA_API int32_t llama_set_adapter_h_suppress(
+            struct llama_context * ctx,
+                     const float * data,
+                          size_t   len,
+                         int32_t   d_m,
+                         int32_t   il);
+
     //
     // Memory
     //

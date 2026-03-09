@@ -1186,6 +1186,11 @@ void llama_context::set_adapter_acap_layer_threshold(int32_t il, float tau) {
     acap.set_per_layer_threshold(il, tau);
 }
 
+bool llama_context::set_adapter_h_suppress(
+        const float * data, size_t len, int32_t d_m, int32_t il) {
+    return h_suppress.apply(model, data, len, d_m, il);
+}
+
 llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
     if (mctx && !mctx->apply()) {
         LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
@@ -2163,6 +2168,7 @@ llm_graph_params llama_context::graph_params(
         /*.backend_cpu =*/ backend_cpu,
         /*.cvec        =*/ cvec.get(),
         /*.acap        =*/ &acap,
+        /*.h_suppress  =*/ &h_suppress,
         /*.loras       =*/ loras.get(),
         /*.mctx        =*/ mctx,
         /*.cross       =*/ &cross,
@@ -3219,6 +3225,16 @@ void llama_set_adapter_acap_layer_threshold(
               int32_t   il,
                 float   tau) {
     ctx->set_adapter_acap_layer_threshold(il, tau);
+}
+
+int32_t llama_set_adapter_h_suppress(
+        llama_context * ctx,
+          const float * data,
+               size_t   len,
+              int32_t   d_m,
+              int32_t   il) {
+    bool res = ctx->set_adapter_h_suppress(data, len, d_m, il);
+    return res ? 0 : -1;
 }
 
 //

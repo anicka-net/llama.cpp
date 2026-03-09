@@ -2553,6 +2553,13 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ));
     add_opt(common_arg(
+        {"--h-suppress"}, "FNAME",
+        "load H-Neuron suppression vectors from GGUF file (per-neuron FFN scaling)",
+        [](common_params & params, const std::string & value) {
+            params.h_suppress_file = value;
+        }
+    ));
+    add_opt(common_arg(
         {"-a", "--alias"}, "STRING",
         "set model name aliases, comma-separated (to be used by API)",
         [](common_params & params, const std::string & value) {

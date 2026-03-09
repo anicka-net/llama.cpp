@@ -452,6 +452,8 @@ struct common_params {
     int32_t acap_layer_end   = -1; // layer range for activation capping
     float   acap_threshold   = 0.0f; // capping threshold
 
+    std::string h_suppress_file;  // H-Neuron suppression GGUF file
+
     int32_t verbosity                  = 3;  // LOG_LEVEL_INFO
     int32_t control_vector_layer_start = -1; // layer range for control vector
     int32_t control_vector_layer_end   = -1; // layer range for control vector

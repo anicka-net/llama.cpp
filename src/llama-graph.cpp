@@ -876,6 +876,7 @@ llm_graph_context::llm_graph_context(const llm_graph_params & params) :
     backend_cpu      (params.backend_cpu),
     cvec             (params.cvec),
     acap             (params.acap),
+    h_suppress       (params.h_suppress),
     loras            (params.loras),
     mctx             (params.mctx),
     cross            (params.cross),
@@ -903,6 +904,12 @@ ggml_tensor * llm_graph_context::build_acap(
          ggml_tensor * cur,
                  int   il) const {
     return acap->apply_to(ctx0, cur, il);
+}
+
+ggml_tensor * llm_graph_context::build_h_suppress(
+         ggml_tensor * cur,
+                 int   il) const {
+    return h_suppress->apply_to(ctx0, cur, il);
 }
 
 ggml_tensor * llm_graph_context::build_lora_mm(
@@ -1137,6 +1144,11 @@ ggml_tensor * llm_graph_context::build_ffn(
     if (gate && type_gate == LLM_FFN_PAR) {
         cur = ggml_mul(ctx0, cur, tmp);
         cb(cur, "ffn_gate_par", il);
+    }
+
+    // H-Neuron suppression: per-neuron scaling before down-projection
+    if (il >= 0) {
+        cur = build_h_suppress(cur, il);
     }
 
     if (down) {

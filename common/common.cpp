@@ -1249,6 +1249,66 @@ common_init_result_ptr common_init_from_params(common_params & params) {
         }
     }
 
+    if (!params.h_suppress_file.empty()) {
+        // Load H-Neuron suppression vectors from GGUF
+        struct ggml_context * data_ctx = nullptr;
+        struct gguf_init_params gguf_params = { /*.no_alloc =*/ false, /*.ctx =*/ &data_ctx };
+        struct gguf_context * gguf_ctx = gguf_init_from_file(params.h_suppress_file.c_str(), gguf_params);
+        if (!gguf_ctx) {
+            LOG_ERR("%s: failed to load H-suppress file: %s\n", __func__, params.h_suppress_file.c_str());
+            return res;
+        }
+
+        const int n_tensors = gguf_get_n_tensors(gguf_ctx);
+        int loaded = 0;
+
+        for (int i = 0; i < n_tensors; i++) {
+            const char * name = gguf_get_tensor_name(gguf_ctx, i);
+            std::string sname(name);
+
+            // Parse tensor name: h_suppress.{layer_idx}
+            const std::string prefix = "h_suppress.";
+            if (sname.substr(0, prefix.size()) != prefix) {
+                continue;
+            }
+
+            int layer_idx = -1;
+            try {
+                layer_idx = std::stoi(sname.substr(prefix.size()));
+            } catch (...) {
+                continue;
+            }
+
+            struct ggml_tensor * tensor = ggml_get_tensor(data_ctx, name);
+            if (!tensor || tensor->type != GGML_TYPE_F32) {
+                LOG_WRN("%s: skipping non-F32 h_suppress tensor: %s\n", __func__, name);
+                continue;
+            }
+
+            const int64_t d_m = tensor->ne[0];
+            const float * data = (const float *) tensor->data;
+
+            int err = llama_set_adapter_h_suppress(lctx, data, d_m, d_m, layer_idx);
+            if (err) {
+                LOG_ERR("%s: failed to set H-suppress for layer %d\n", __func__, layer_idx);
+            } else {
+                loaded++;
+            }
+        }
+
+        if (data_ctx) {
+            ggml_free(data_ctx);
+        }
+        gguf_free(gguf_ctx);
+
+        if (loaded > 0) {
+            LOG_INF("%s: loaded H-Neuron suppression for %d layers from %s\n",
+                    __func__, loaded, params.h_suppress_file.c_str());
+        } else {
+            LOG_WRN("%s: no H-suppress tensors found in %s\n", __func__, params.h_suppress_file.c_str());
+        }
+    }
+
     if (llama_pooling_type(lctx) == LLAMA_POOLING_TYPE_RANK) {
         bool ok = true;
 

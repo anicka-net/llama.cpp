@@ -311,6 +311,135 @@ void llama_adapter_acap::set_per_layer_threshold(int il, float tau) {
     per_layer_thresholds[il] = tau;
 }
 
+// h_suppress (H-Neuron suppression)
+
+ggml_tensor * llama_adapter_h_suppress::tensor_for(int il) const {
+    if (il < 0 || (size_t) il >= tensors.size()) {
+        return nullptr;
+    }
+    return tensors[il];
+}
+
+ggml_tensor * llama_adapter_h_suppress::apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const {
+    ggml_tensor * scales = tensor_for(il);
+    if (scales == nullptr) {
+        return cur;
+    }
+
+    // cur: [d_m, n_tokens] — FFN intermediate activation before down_proj
+    // scales: [d_m] — per-neuron scaling (1.0 = passthrough, 0.0 = suppress)
+    // ggml_mul broadcasts scales over the token dimension
+    return ggml_mul(ctx, cur, scales);
+}
+
+bool llama_adapter_h_suppress::init(const llama_model & model) {
+    const auto & hparams = model.hparams;
+
+    GGML_ASSERT(tensors.empty());
+    GGML_ASSERT(ctxs.empty());
+    GGML_ASSERT(bufs.empty());
+
+    std::map<ggml_backend_buffer_type_t, ggml_context *> ctx_map;
+    auto ctx_for_buft = [&](ggml_backend_buffer_type_t buft) -> ggml_context * {
+        auto it = ctx_map.find(buft);
+        if (it == ctx_map.end()) {
+            ggml_init_params params = {
+                /*.mem_size   =*/ hparams.n_layer*ggml_tensor_overhead(),
+                /*.mem_buffer =*/ NULL,
+                /*.no_alloc   =*/ true,
+            };
+
+            ggml_context * ctx = ggml_init(params);
+            if (!ctx) {
+                return nullptr;
+            }
+
+            ctx_map[buft] = ctx;
+            ctxs.emplace_back(ctx);
+
+            return ctx;
+        }
+
+        return it->second;
+    };
+
+    // create per-layer tensors with d_m (FFN intermediate size)
+    const int64_t d_m = hparams.n_ff();
+    tensors.resize(hparams.n_layer, nullptr);
+
+    for (size_t il = 0; il < hparams.n_layer; il++) {
+        ggml_backend_buffer_type_t buft = model.select_buft(il);
+        ggml_context * ctx = ctx_for_buft(buft);
+        if (!ctx) {
+            LLAMA_LOG_ERROR("%s: failed to allocate context for H-Neuron suppression\n", __func__);
+            return false;
+        }
+        ggml_tensor * tensor = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, d_m);
+        tensors[il] = tensor;
+    }
+
+    // allocate and initialize all to 1.0 (no suppression by default)
+    bufs.reserve(ctx_map.size());
+    for (auto it : ctx_map) {
+        ggml_backend_buffer_type_t buft = it.first;
+        ggml_context * ctx = it.second;
+        ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors_from_buft(ctx, buft);
+        if (!buf) {
+            LLAMA_LOG_ERROR("%s: failed to allocate buffer for H-Neuron suppression\n", __func__);
+            return false;
+        }
+        // set all to 1.0 (passthrough) — not 0
+        // we can't use ggml_backend_buffer_clear for 1.0, so set per-tensor below
+        bufs.emplace_back(buf);
+    }
+
+    // initialize all tensors to 1.0
+    const int64_t d_m_val = hparams.n_ff();
+    std::vector<float> ones(d_m_val, 1.0f);
+    for (size_t il = 0; il < hparams.n_layer; il++) {
+        if (tensors[il]) {
+            ggml_backend_tensor_set(tensors[il], ones.data(), 0, d_m_val * sizeof(float));
+        }
+    }
+
+    return true;
+}
+
+bool llama_adapter_h_suppress::apply(
+        const llama_model & model,
+        const float * data,
+        size_t len,
+        int32_t d_m,
+        int32_t il) {
+    const auto & hparams = model.hparams;
+
+    if (d_m != (int) hparams.n_ff()) {
+        LLAMA_LOG_ERROR("%s: H-Neuron suppression d_m (%d) does not match model FFN size (%d)\n",
+                        __func__, d_m, (int) hparams.n_ff());
+        return false;
+    }
+
+    if (tensors.empty()) {
+        if (!init(model)) {
+            return false;
+        }
+    }
+
+    if (il < 0 || (size_t) il >= tensors.size()) {
+        LLAMA_LOG_ERROR("%s: layer %d out of range\n", __func__, il);
+        return false;
+    }
+
+    if (len < (size_t) d_m) {
+        LLAMA_LOG_ERROR("%s: data too short for layer %d\n", __func__, il);
+        return false;
+    }
+
+    ggml_backend_tensor_set(tensors[il], data, 0, d_m * sizeof(float));
+
+    return true;
+}
+
 // lora
 
 llama_adapter_lora_weight * llama_adapter_lora::get_weight(ggml_tensor * w) {

@@ -79,6 +79,36 @@ private:
 };
 
 //
+// llama_adapter_h_suppress (H-Neuron suppression)
+//
+// Per-neuron scaling in FFN intermediate activations.
+// Suppresses hallucination-associated neurons identified via
+// Gao et al. (2025) "H-Neurons" (arXiv:2512.01797).
+//
+
+struct llama_adapter_h_suppress {
+    ggml_tensor * tensor_for(int il) const;
+
+    // elementwise multiply: z_t *= scales[il]
+    ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const;
+
+    bool apply(
+            const llama_model & model,
+            const float * data,
+            size_t len,
+            int32_t d_m,
+            int32_t il);
+
+private:
+    bool init(const llama_model & model);
+
+    std::vector<ggml_context_ptr> ctxs;
+    std::vector<ggml_backend_buffer_ptr> bufs;
+
+    std::vector<ggml_tensor *> tensors; // per layer, [d_m] scaling vector (NULL if no suppression)
+};
+
+//
 // llama_adapter_lora
 //
 
